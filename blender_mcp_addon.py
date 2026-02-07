@@ -665,14 +665,43 @@ class BlenderMCPServer:
                 f"Input not found: '{input_name}'. Available inputs: {available}"
             )
 
-        mod[target_identifier] = value
+        # Determine socket type to handle ID properties (Object, Collection, etc.)
+        socket_type = None
+        for item in mod.node_group.interface.items_tree:
+            if item.identifier == target_identifier:
+                socket_type = item.socket_type
+                break
+
+        if socket_type == 'NodeSocketObject' and isinstance(value, str):
+            ref = bpy.data.objects.get(value)
+            if ref is None:
+                raise ValueError(f"Object not found: '{value}'")
+            mod[target_identifier] = ref
+        elif socket_type == 'NodeSocketCollection' and isinstance(value, str):
+            ref = bpy.data.collections.get(value)
+            if ref is None:
+                raise ValueError(f"Collection not found: '{value}'")
+            mod[target_identifier] = ref
+        elif socket_type == 'NodeSocketMaterial' and isinstance(value, str):
+            ref = bpy.data.materials.get(value)
+            if ref is None:
+                raise ValueError(f"Material not found: '{value}'")
+            mod[target_identifier] = ref
+        elif socket_type == 'NodeSocketImage' and isinstance(value, str):
+            ref = bpy.data.images.get(value)
+            if ref is None:
+                raise ValueError(f"Image not found: '{value}'")
+            mod[target_identifier] = ref
+        else:
+            mod[target_identifier] = value
+
         # Force UI update
         obj.update_tag()
 
         return {
             "modifier": modifier_name,
             "input": target_identifier,
-            "value": value,
+            "value": str(value),
         }
 
 
