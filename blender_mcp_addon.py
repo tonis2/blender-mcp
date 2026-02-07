@@ -526,7 +526,9 @@ class BlenderMCPServer:
                 try:
                     val = getattr(mod, prop_name)
                     # Convert Blender types to JSON-serializable
-                    if hasattr(val, '__iter__') and not isinstance(val, str):
+                    if isinstance(val, bpy.types.ID):
+                        val = val.name if val else None
+                    elif hasattr(val, '__iter__') and not isinstance(val, str):
                         val = list(val)
                     mod_info["properties"][prop_name] = val
                 except AttributeError:
@@ -544,9 +546,12 @@ class BlenderMCPServer:
                             "socket_type": item.socket_type,
                         }
                         try:
-                            input_info["value"] = mod[item.identifier]
-                            if hasattr(input_info["value"], '__iter__') and not isinstance(input_info["value"], str):
-                                input_info["value"] = list(input_info["value"])
+                            val = mod[item.identifier]
+                            if isinstance(val, bpy.types.ID):
+                                val = val.name if val else None
+                            elif hasattr(val, '__iter__') and not isinstance(val, str):
+                                val = list(val)
+                            input_info["value"] = val
                         except (KeyError, TypeError):
                             input_info["value"] = None
                         mod_info["inputs"].append(input_info)
