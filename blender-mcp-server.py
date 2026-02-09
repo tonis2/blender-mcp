@@ -607,7 +607,7 @@ print("Render complete: {temp_path}")
                     result = await self._send_command("execute_code", {"code": code})
 
                     # Read rendered image
-                    if os.path.exists(temp_path):
+                    if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
                         with open(temp_path, "rb") as f:
                             image_data = base64.b64encode(f.read()).decode("utf-8")
                         os.unlink(temp_path)
@@ -620,6 +620,8 @@ print("Render complete: {temp_path}")
                             )
                         ]
                     else:
+                        if os.path.exists(temp_path):
+                            os.unlink(temp_path)
                         return [TextContent(type="text", text=f"Render failed: {result}")]
 
                 elif name == "get_modifiers":
