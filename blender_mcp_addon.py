@@ -35,7 +35,7 @@ bl_info = {
 class BlenderMCPServer:
     """Simple socket server for Blender MCP communication"""
 
-    def __init__(self, host='localhost', port=9876):
+    def __init__(self, host="localhost", port=9876):
         self.host = host
         self.port = port
         self.running = False
@@ -100,8 +100,7 @@ class BlenderMCPServer:
 
                     # Handle in separate thread
                     client_thread = threading.Thread(
-                        target=self._handle_client,
-                        args=(client,)
+                        target=self._handle_client, args=(client,)
                     )
                     client_thread.daemon = True
                     client_thread.start()
@@ -119,7 +118,7 @@ class BlenderMCPServer:
     def _handle_client(self, client):
         """Handle client connection"""
         client.settimeout(None)
-        buffer = b''
+        buffer = b""
 
         try:
             while self.running:
@@ -130,8 +129,8 @@ class BlenderMCPServer:
 
                     buffer += data
                     try:
-                        command = json.loads(buffer.decode('utf-8'))
-                        buffer = b''
+                        command = json.loads(buffer.decode("utf-8"))
+                        buffer = b""
 
                         # Execute in main thread
                         def execute_wrapper():
@@ -139,7 +138,7 @@ class BlenderMCPServer:
                                 response = self.execute_command(command)
                                 response_json = json.dumps(response)
                                 try:
-                                    client.sendall(response_json.encode('utf-8'))
+                                    client.sendall(response_json.encode("utf-8"))
                                 except:
                                     pass
                             except Exception as e:
@@ -148,9 +147,11 @@ class BlenderMCPServer:
                                 try:
                                     error_response = {
                                         "status": "error",
-                                        "message": str(e)
+                                        "message": str(e),
                                     }
-                                    client.sendall(json.dumps(error_response).encode('utf-8'))
+                                    client.sendall(
+                                        json.dumps(error_response).encode("utf-8")
+                                    )
                                 except:
                                     pass
                             return None
@@ -216,9 +217,11 @@ class BlenderMCPServer:
             obj_info = {
                 "name": obj.name,
                 "type": obj.type,
-                "location": [round(float(obj.location.x), 2),
-                            round(float(obj.location.y), 2),
-                            round(float(obj.location.z), 2)],
+                "location": [
+                    round(float(obj.location.x), 2),
+                    round(float(obj.location.y), 2),
+                    round(float(obj.location.z), 2),
+                ],
             }
             scene_info["objects"].append(obj_info)
 
@@ -234,7 +237,11 @@ class BlenderMCPServer:
             "name": obj.name,
             "type": obj.type,
             "location": [obj.location.x, obj.location.y, obj.location.z],
-            "rotation": [obj.rotation_euler.x, obj.rotation_euler.y, obj.rotation_euler.z],
+            "rotation": [
+                obj.rotation_euler.x,
+                obj.rotation_euler.y,
+                obj.rotation_euler.z,
+            ],
             "scale": [obj.scale.x, obj.scale.y, obj.scale.z],
             "visible": obj.visible_get(),
             "materials": [],
@@ -244,7 +251,7 @@ class BlenderMCPServer:
             if slot.material:
                 obj_info["materials"].append(slot.material.name)
 
-        if obj.type == 'MESH' and obj.data:
+        if obj.type == "MESH" and obj.data:
             mesh = obj.data
             obj_info["mesh"] = {
                 "vertices": len(mesh.vertices),
@@ -260,23 +267,9 @@ class BlenderMCPServer:
         import base64
         import os
 
-        temp_path = tempfile.mktemp(suffix='.png')
+        temp_path = tempfile.mktemp(suffix=".png")
 
         try:
-            scene = bpy.context.scene
-
-            # Save current render settings
-            old_filepath = scene.render.filepath
-            old_format = scene.render.image_settings.file_format
-            old_res_x = scene.render.resolution_x
-            old_res_y = scene.render.resolution_y
-            old_pct = scene.render.resolution_percentage
-
-            # Configure render output
-            scene.render.image_settings.file_format = 'PNG'
-            scene.render.filepath = temp_path
-            scene.render.resolution_percentage = 100
-
             # Find 3D viewport
             view3d_area = None
             view3d_region = None
@@ -284,11 +277,11 @@ class BlenderMCPServer:
 
             for window in bpy.context.window_manager.windows:
                 for area in window.screen.areas:
-                    if area.type == 'VIEW_3D':
+                    if area.type == "VIEW_3D":
                         view3d_area = area
                         target_window = window
                         for region in area.regions:
-                            if region.type == 'WINDOW':
+                            if region.type == "WINDOW":
                                 view3d_region = region
                                 break
                         break
@@ -298,42 +291,68 @@ class BlenderMCPServer:
             if not view3d_area or not view3d_region:
                 raise Exception("No 3D viewport found")
 
-            # Calculate resolution maintaining viewport aspect ratio
-            vp_width = view3d_region.width
-            vp_height = view3d_region.height
+            # Store screenshot result
+            screenshot_result = {"success": False, "error": None}
 
-            if vp_width >= vp_height:
-                new_width = min(max_size, vp_width)
-                new_height = int(new_width * vp_height / vp_width)
-            else:
-                new_height = min(max_size, vp_height)
-                new_width = int(new_height * vp_width / vp_height)
+            def capture_screenshot():
+                """Capture screenshot from main thread"""
+                try:
+                    # Use screenshot_area operator which is more reliable
+                    override = {
+                        "window": target_window,
+                        "screen": target_window.screen,
+                        "area": view3d_area,
+                        "region": view3d_region,
+                    }
+                    with bpy.context.temp_override(**override):
+                        # Save screenshot to temp file
+                        bpy.ops.screen.screenshot_area(filepath=temp_path)
 
-            scene.render.resolution_x = new_width
-            scene.render.resolution_y = new_height
+                    screenshot_result["success"] = True
+                except Exception as e:
+                    screenshot_result["error"] = str(e)
+                    print(f"BlenderMCP: Screenshot capture failed: {e}")
 
-            # OpenGL viewport render - works reliably from timer context
-            override = {
-                'window': target_window,
-                'screen': target_window.screen,
-                'area': view3d_area,
-                'region': view3d_region,
-            }
-            with bpy.context.temp_override(**override):
-                bpy.ops.render.opengl(write_still=True)
+            # Execute capture immediately since we're already in main thread via timer
+            capture_screenshot()
 
-            # Restore settings
-            scene.render.filepath = old_filepath
-            scene.render.image_settings.file_format = old_format
-            scene.render.resolution_x = old_res_x
-            scene.render.resolution_y = old_res_y
-            scene.render.resolution_percentage = old_pct
+            if not screenshot_result["success"]:
+                raise Exception(
+                    f"Screenshot capture failed: {screenshot_result['error']}"
+                )
 
-            # Read and encode
+            # Read and process the screenshot
             if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
-                with open(temp_path, 'rb') as f:
-                    image_data = base64.b64encode(f.read()).decode('utf-8')
-                return {"image_data": image_data}
+                # Load image and resize if needed
+                image = bpy.data.images.load(temp_path)
+
+                try:
+                    # Calculate new dimensions maintaining aspect ratio
+                    width, height = image.size
+                    if width > max_size or height > max_size:
+                        if width > height:
+                            new_width = max_size
+                            new_height = int(height * (max_size / width))
+                        else:
+                            new_height = max_size
+                            new_width = int(width * (max_size / height))
+
+                        # Resize image
+                        image.scale(new_width, new_height)
+
+                    # Save resized image to temp file
+                    image.filepath_raw = temp_path
+                    image.file_format = "PNG"
+                    image.save()
+
+                    # Read the resized image
+                    with open(temp_path, "rb") as f:
+                        image_data = base64.b64encode(f.read()).decode("utf-8")
+
+                    return {"image_data": image_data}
+                finally:
+                    # Remove the loaded image from Blender
+                    bpy.data.images.remove(image)
             else:
                 raise Exception("Screenshot file was not created or is empty")
 
@@ -354,6 +373,8 @@ class BlenderMCPServer:
                 exec(code, namespace)
 
             output = capture_buffer.getvalue()
+            if not output.strip():
+                output = "Code executed successfully (no output)"
             return {"executed": True, "output": output}
         except Exception as e:
             raise Exception(f"Code execution error: {str(e)}")
@@ -362,10 +383,12 @@ class BlenderMCPServer:
         """List all asset libraries configured in Blender preferences"""
         libraries = []
         for lib in bpy.context.preferences.filepaths.asset_libraries:
-            libraries.append({
-                "name": lib.name,
-                "path": lib.path,
-            })
+            libraries.append(
+                {
+                    "name": lib.name,
+                    "path": lib.path,
+                }
+            )
         return libraries
 
     def list_assets(self, library_name, search="", offset=0, limit=50):
@@ -388,18 +411,24 @@ class BlenderMCPServer:
         for entry in sorted(os.listdir(library_path)):
             entry_path = os.path.join(library_path, entry)
             if os.path.isdir(entry_path):
-                blend_files = [f for f in os.listdir(entry_path) if f.endswith('.blend')]
+                blend_files = [
+                    f for f in os.listdir(entry_path) if f.endswith(".blend")
+                ]
                 if blend_files:
-                    assets.append({
-                        "name": entry,
-                        "blend_file": blend_files[0],
-                    })
-            elif entry.endswith('.blend'):
+                    assets.append(
+                        {
+                            "name": entry,
+                            "blend_file": blend_files[0],
+                        }
+                    )
+            elif entry.endswith(".blend"):
                 # Also handle .blend files directly in the library root
-                assets.append({
-                    "name": os.path.splitext(entry)[0],
-                    "blend_file": entry,
-                })
+                assets.append(
+                    {
+                        "name": os.path.splitext(entry)[0],
+                        "blend_file": entry,
+                    }
+                )
 
         # Apply search filter
         if search:
@@ -407,7 +436,7 @@ class BlenderMCPServer:
             assets = [a for a in assets if search_lower in a["name"].lower()]
 
         total = len(assets)
-        assets = assets[offset:offset + limit]
+        assets = assets[offset : offset + limit]
 
         return {
             "library": library_name,
@@ -437,12 +466,12 @@ class BlenderMCPServer:
         asset_dir = os.path.join(library_path, asset_name)
         if os.path.isdir(asset_dir):
             for f in os.listdir(asset_dir):
-                if f.endswith('.blend'):
+                if f.endswith(".blend"):
                     blend_path = os.path.join(asset_dir, f)
                     break
         else:
             # Check for .blend file directly in library root
-            candidate = os.path.join(library_path, asset_name + '.blend')
+            candidate = os.path.join(library_path, asset_name + ".blend")
             if os.path.isfile(candidate):
                 blend_path = candidate
 
@@ -462,14 +491,14 @@ class BlenderMCPServer:
 
         # Link appended collections/objects to the scene
         appended_objects = []
-        if hasattr(data_to, 'collections'):
+        if hasattr(data_to, "collections"):
             for coll in data_to.collections:
                 if coll is not None:
                     bpy.context.scene.collection.children.link(coll)
                     for obj in coll.all_objects:
                         appended_objects.append(obj.name)
 
-        if hasattr(data_to, 'objects'):
+        if hasattr(data_to, "objects"):
             for obj in data_to.objects:
                 if obj is not None and obj.name not in objects_before:
                     bpy.context.collection.objects.link(obj)
@@ -507,18 +536,24 @@ class BlenderMCPServer:
 
             # Common properties by type
             prop_map = {
-                'SUBSURF': ['levels', 'render_levels', 'uv_smooth', 'quality'],
-                'BEVEL': ['width', 'segments', 'limit_method', 'offset_type'],
-                'ARRAY': ['count', 'use_relative_offset', 'use_constant_offset', 'relative_offset_displace', 'constant_offset_displace'],
-                'MIRROR': ['use_axis', 'use_bisect_axis', 'merge_threshold'],
-                'BOOLEAN': ['operation', 'solver'],
-                'SOLIDIFY': ['thickness', 'offset', 'use_even_offset'],
-                'WIREFRAME': ['thickness', 'use_replace', 'use_even_offset'],
-                'DECIMATE': ['decimate_type', 'ratio', 'angle_limit'],
-                'REMESH': ['mode', 'octree_depth', 'voxel_size'],
-                'SMOOTH': ['factor', 'iterations'],
-                'SHRINKWRAP': ['wrap_method', 'wrap_mode', 'offset'],
-                'CURVE': ['deform_axis'],
+                "SUBSURF": ["levels", "render_levels", "uv_smooth", "quality"],
+                "BEVEL": ["width", "segments", "limit_method", "offset_type"],
+                "ARRAY": [
+                    "count",
+                    "use_relative_offset",
+                    "use_constant_offset",
+                    "relative_offset_displace",
+                    "constant_offset_displace",
+                ],
+                "MIRROR": ["use_axis", "use_bisect_axis", "merge_threshold"],
+                "BOOLEAN": ["operation", "solver"],
+                "SOLIDIFY": ["thickness", "offset", "use_even_offset"],
+                "WIREFRAME": ["thickness", "use_replace", "use_even_offset"],
+                "DECIMATE": ["decimate_type", "ratio", "angle_limit"],
+                "REMESH": ["mode", "octree_depth", "voxel_size"],
+                "SMOOTH": ["factor", "iterations"],
+                "SHRINKWRAP": ["wrap_method", "wrap_mode", "offset"],
+                "CURVE": ["deform_axis"],
             }
 
             props_to_read = prop_map.get(mod.type, [])
@@ -528,18 +563,18 @@ class BlenderMCPServer:
                     # Convert Blender types to JSON-serializable
                     if isinstance(val, bpy.types.ID):
                         val = val.name if val else None
-                    elif hasattr(val, '__iter__') and not isinstance(val, str):
+                    elif hasattr(val, "__iter__") and not isinstance(val, str):
                         val = list(val)
                     mod_info["properties"][prop_name] = val
                 except AttributeError:
                     pass
 
             # Geometry Nodes special handling
-            if mod.type == 'NODES' and mod.node_group:
+            if mod.type == "NODES" and mod.node_group:
                 mod_info["node_group"] = mod.node_group.name
                 mod_info["inputs"] = []
                 for item in mod.node_group.interface.items_tree:
-                    if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
+                    if item.item_type == "SOCKET" and item.in_out == "INPUT":
                         input_info = {
                             "identifier": item.identifier,
                             "name": item.name,
@@ -549,7 +584,7 @@ class BlenderMCPServer:
                             val = mod[item.identifier]
                             if isinstance(val, bpy.types.ID):
                                 val = val.name if val else None
-                            elif hasattr(val, '__iter__') and not isinstance(val, str):
+                            elif hasattr(val, "__iter__") and not isinstance(val, str):
                                 val = list(val)
                             input_info["value"] = val
                         except (KeyError, TypeError):
@@ -560,7 +595,9 @@ class BlenderMCPServer:
 
         return modifiers
 
-    def add_modifier(self, object_name, modifier_type, modifier_name=None, properties=None):
+    def add_modifier(
+        self, object_name, modifier_type, modifier_name=None, properties=None
+    ):
         """Add a modifier to an object"""
         obj = bpy.data.objects.get(object_name)
         if not obj:
@@ -578,10 +615,10 @@ class BlenderMCPServer:
 
         # Read back properties
         result_props = {}
-        for key in (properties or {}):
+        for key in properties or {}:
             try:
                 val = getattr(mod, key)
-                if hasattr(val, '__iter__') and not isinstance(val, str):
+                if hasattr(val, "__iter__") and not isinstance(val, str):
                     val = list(val)
                 result_props[key] = val
             except AttributeError:
@@ -619,11 +656,11 @@ class BlenderMCPServer:
         # Need context override for modifier_apply
         window = bpy.context.window_manager.windows[0]
         override = {
-            'window': window,
-            'screen': window.screen,
-            'area': window.screen.areas[0],
-            'object': obj,
-            'active_object': obj,
+            "window": window,
+            "screen": window.screen,
+            "area": window.screen.areas[0],
+            "object": obj,
+            "active_object": obj,
         }
         with bpy.context.temp_override(**override):
             bpy.context.view_layer.objects.active = obj
@@ -641,8 +678,10 @@ class BlenderMCPServer:
         if not mod:
             raise ValueError(f"Modifier not found: {modifier_name}")
 
-        if mod.type != 'NODES':
-            raise ValueError(f"Modifier '{modifier_name}' is not a Geometry Nodes modifier (type: {mod.type})")
+        if mod.type != "NODES":
+            raise ValueError(
+                f"Modifier '{modifier_name}' is not a Geometry Nodes modifier (type: {mod.type})"
+            )
 
         if not mod.node_group:
             raise ValueError(f"Modifier '{modifier_name}' has no node group assigned")
@@ -650,7 +689,7 @@ class BlenderMCPServer:
         # Find input by identifier or display name
         target_identifier = None
         for item in mod.node_group.interface.items_tree:
-            if item.item_type == 'SOCKET' and item.in_out == 'INPUT':
+            if item.item_type == "SOCKET" and item.in_out == "INPUT":
                 if item.identifier == input_name or item.name == input_name:
                     target_identifier = item.identifier
                     break
@@ -659,7 +698,7 @@ class BlenderMCPServer:
             available = [
                 f"{item.identifier} ({item.name})"
                 for item in mod.node_group.interface.items_tree
-                if item.item_type == 'SOCKET' and item.in_out == 'INPUT'
+                if item.item_type == "SOCKET" and item.in_out == "INPUT"
             ]
             raise ValueError(
                 f"Input not found: '{input_name}'. Available inputs: {available}"
@@ -672,22 +711,22 @@ class BlenderMCPServer:
                 socket_type = item.socket_type
                 break
 
-        if socket_type == 'NodeSocketObject' and isinstance(value, str):
+        if socket_type == "NodeSocketObject" and isinstance(value, str):
             ref = bpy.data.objects.get(value)
             if ref is None:
                 raise ValueError(f"Object not found: '{value}'")
             mod[target_identifier] = ref
-        elif socket_type == 'NodeSocketCollection' and isinstance(value, str):
+        elif socket_type == "NodeSocketCollection" and isinstance(value, str):
             ref = bpy.data.collections.get(value)
             if ref is None:
                 raise ValueError(f"Collection not found: '{value}'")
             mod[target_identifier] = ref
-        elif socket_type == 'NodeSocketMaterial' and isinstance(value, str):
+        elif socket_type == "NodeSocketMaterial" and isinstance(value, str):
             ref = bpy.data.materials.get(value)
             if ref is None:
                 raise ValueError(f"Material not found: '{value}'")
             mod[target_identifier] = ref
-        elif socket_type == 'NodeSocketImage' and isinstance(value, str):
+        elif socket_type == "NodeSocketImage" and isinstance(value, str):
             ref = bpy.data.images.get(value)
             if ref is None:
                 raise ValueError(f"Image not found: '{value}'")
@@ -711,20 +750,22 @@ _server = None
 
 # Blender UI Classes
 
+
 class BLENDERMCP_PT_Panel(bpy.types.Panel):
     """BlenderMCP control panel"""
+
     bl_label = "Blender MCP"
     bl_idname = "BLENDERMCP_PT_panel"
-    bl_space_type = 'VIEW_3D'
-    bl_region_type = 'UI'
-    bl_category = 'BlenderMCP'
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "BlenderMCP"
 
     def draw(self, context):
         layout = self.layout
         scene = context.scene
 
         box = layout.box()
-        box.label(text="MCP Server", icon='NETWORK_DRIVE')
+        box.label(text="MCP Server", icon="NETWORK_DRIVE")
 
         row = box.row()
         row.prop(scene, "blendermcp_port")
@@ -732,18 +773,22 @@ class BLENDERMCP_PT_Panel(bpy.types.Panel):
         global _server
         if _server and _server.running:
             row = box.row()
-            row.label(text=f"Status: Running on port {scene.blendermcp_port}", icon='CHECKMARK')
+            row.label(
+                text=f"Status: Running on port {scene.blendermcp_port}",
+                icon="CHECKMARK",
+            )
             row = box.row()
-            row.operator("blendermcp.stop_server", icon='PAUSE')
+            row.operator("blendermcp.stop_server", icon="PAUSE")
         else:
             row = box.row()
-            row.label(text="Status: Stopped", icon='CANCEL')
+            row.label(text="Status: Stopped", icon="CANCEL")
             row = box.row()
-            row.operator("blendermcp.start_server", icon='PLAY')
+            row.operator("blendermcp.start_server", icon="PLAY")
 
 
 class BLENDERMCP_OT_StartServer(bpy.types.Operator):
     """Start the MCP server"""
+
     bl_idname = "blendermcp.start_server"
     bl_label = "Start Server"
 
@@ -753,12 +798,15 @@ class BLENDERMCP_OT_StartServer(bpy.types.Operator):
             _server = BlenderMCPServer(port=context.scene.blendermcp_port)
 
         _server.start()
-        self.report({'INFO'}, f"MCP Server started on port {context.scene.blendermcp_port}")
-        return {'FINISHED'}
+        self.report(
+            {"INFO"}, f"MCP Server started on port {context.scene.blendermcp_port}"
+        )
+        return {"FINISHED"}
 
 
 class BLENDERMCP_OT_StopServer(bpy.types.Operator):
     """Stop the MCP server"""
+
     bl_idname = "blendermcp.stop_server"
     bl_label = "Stop Server"
 
@@ -766,8 +814,8 @@ class BLENDERMCP_OT_StopServer(bpy.types.Operator):
         global _server
         if _server:
             _server.stop()
-            self.report({'INFO'}, "MCP Server stopped")
-        return {'FINISHED'}
+            self.report({"INFO"}, "MCP Server stopped")
+        return {"FINISHED"}
 
 
 # Registration

@@ -116,7 +116,17 @@ class BlenderMCPServer:
                         "properties": {
                             "object_type": {
                                 "type": "string",
-                                "enum": ["CUBE", "SPHERE", "CYLINDER", "CONE", "TORUS", "PLANE", "MONKEY", "CAMERA", "LIGHT"],
+                                "enum": [
+                                    "CUBE",
+                                    "SPHERE",
+                                    "CYLINDER",
+                                    "CONE",
+                                    "TORUS",
+                                    "PLANE",
+                                    "MONKEY",
+                                    "CAMERA",
+                                    "LIGHT",
+                                ],
                                 "description": "Type of object to create",
                             },
                             "name": {
@@ -276,9 +286,19 @@ class BlenderMCPServer:
                             "modifier_type": {
                                 "type": "string",
                                 "enum": [
-                                    "SUBSURF", "BEVEL", "ARRAY", "MIRROR", "BOOLEAN",
-                                    "SOLIDIFY", "WIREFRAME", "DECIMATE", "REMESH",
-                                    "SMOOTH", "SHRINKWRAP", "CURVE", "NODES",
+                                    "SUBSURF",
+                                    "BEVEL",
+                                    "ARRAY",
+                                    "MIRROR",
+                                    "BOOLEAN",
+                                    "SOLIDIFY",
+                                    "WIREFRAME",
+                                    "DECIMATE",
+                                    "REMESH",
+                                    "SMOOTH",
+                                    "SHRINKWRAP",
+                                    "CURVE",
+                                    "NODES",
                                 ],
                                 "description": "Type of modifier to add",
                             },
@@ -288,7 +308,7 @@ class BlenderMCPServer:
                             },
                             "properties": {
                                 "type": "object",
-                                "description": "Property name-value pairs to set on the modifier (e.g. {\"levels\": 3})",
+                                "description": 'Property name-value pairs to set on the modifier (e.g. {"levels": 3})',
                             },
                         },
                         "required": ["object_name", "modifier_type"],
@@ -352,7 +372,12 @@ class BlenderMCPServer:
                                 "description": "Value to set (number, array, string, or boolean)",
                             },
                         },
-                        "required": ["object_name", "modifier_name", "input_name", "value"],
+                        "required": [
+                            "object_name",
+                            "modifier_name",
+                            "input_name",
+                            "value",
+                        ],
                     },
                 ),
                 Tool(
@@ -422,7 +447,9 @@ class BlenderMCPServer:
             ]
 
         @self.server.call_tool()
-        async def call_tool(name: str, arguments: Any) -> list[TextContent | ImageContent]:
+        async def call_tool(
+            name: str, arguments: Any
+        ) -> list[TextContent | ImageContent]:
             """Handle tool calls"""
             try:
                 if name == "get_scene_info":
@@ -431,30 +458,40 @@ class BlenderMCPServer:
 
                 elif name == "get_viewport_screenshot":
                     max_size = arguments.get("max_size", 800)
-                    result = await self._send_command("get_viewport_screenshot", {"max_size": max_size})
-
+                    result = await self._send_command(
+                        "get_viewport_screenshot", {"max_size": max_size}
+                    )
                     image_data = result.get("image_data", "")
                     if image_data:
                         return [
+                            TextContent(
+                                type="text",
+                                text=f"Viewport screenshot captured ({max_size}px max)",
+                            ),
                             ImageContent(
                                 type="image",
                                 data=image_data,
                                 mimeType="image/png",
-                            )
+                            ),
                         ]
                     else:
-                        return [TextContent(type="text", text="Screenshot failed: no image data returned")]
+                        return [
+                            TextContent(
+                                type="text",
+                                text="Screenshot failed: no image data returned",
+                            )
+                        ]
 
                 elif name == "get_object_info":
-                    result = await self._send_command("get_object_info", {
-                        "name": arguments["object_name"]
-                    })
+                    result = await self._send_command(
+                        "get_object_info", {"name": arguments["object_name"]}
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "execute_python":
-                    result = await self._send_command("execute_code", {
-                        "code": arguments["code"]
-                    })
+                    result = await self._send_command(
+                        "execute_code", {"code": arguments["code"]}
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "create_object":
@@ -499,28 +536,40 @@ obj.scale = {scale}
 print(f"Created {{obj_type}}: {{obj.name}} at {{obj.location}}")
 '''
                     result = await self._send_command("execute_code", {"code": code})
-                    return [TextContent(type="text", text=f"Object created successfully\n{result}")]
+                    return [
+                        TextContent(
+                            type="text", text=f"Object created successfully\n{result}"
+                        )
+                    ]
 
                 elif name == "modify_object":
                     obj_name = arguments["object_name"]
                     modifications = []
 
-                    code_parts = [f'import bpy\nobj = bpy.data.objects.get("{obj_name}")\nif not obj:\n    print("ERROR: Object not found")\nelse:']
+                    code_parts = [
+                        f'import bpy\nobj = bpy.data.objects.get("{obj_name}")\nif not obj:\n    print("ERROR: Object not found")\nelse:'
+                    ]
 
                     if "location" in arguments:
-                        code_parts.append(f'    obj.location = {arguments["location"]}')
+                        code_parts.append(f"    obj.location = {arguments['location']}")
                         modifications.append("location")
                     if "rotation" in arguments:
-                        code_parts.append(f'    obj.rotation_euler = {arguments["rotation"]}')
+                        code_parts.append(
+                            f"    obj.rotation_euler = {arguments['rotation']}"
+                        )
                         modifications.append("rotation")
                     if "scale" in arguments:
-                        code_parts.append(f'    obj.scale = {arguments["scale"]}')
+                        code_parts.append(f"    obj.scale = {arguments['scale']}")
                         modifications.append("scale")
                     if "visible" in arguments:
-                        code_parts.append(f'    obj.hide_set({not arguments["visible"]})')
+                        code_parts.append(
+                            f"    obj.hide_set({not arguments['visible']})"
+                        )
                         modifications.append("visibility")
 
-                    code_parts.append(f'    print("Modified {obj_name}: {", ".join(modifications)}")')
+                    code_parts.append(
+                        f'    print("Modified {obj_name}: {", ".join(modifications)}")'
+                    )
                     code = "\n".join(code_parts)
 
                     result = await self._send_command("execute_code", {"code": code})
@@ -544,7 +593,7 @@ else:
                     obj_names = arguments["object_names"]
                     deselect_all = arguments.get("deselect_all", True)
 
-                    code = f'''
+                    code = f"""
 import bpy
 
 if {deselect_all}:
@@ -563,7 +612,7 @@ if selected:
     bpy.context.view_layer.objects.active = bpy.data.objects[selected[0]]
 
 print(f"Selected {{len(selected)}} objects: {{selected}}")
-'''
+"""
                     result = await self._send_command("execute_code", {"code": code})
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -622,12 +671,17 @@ print("Render complete: {temp_path}")
                     else:
                         if os.path.exists(temp_path):
                             os.unlink(temp_path)
-                        return [TextContent(type="text", text=f"Render failed: {result}")]
+                        return [
+                            TextContent(type="text", text=f"Render failed: {result}")
+                        ]
 
                 elif name == "get_modifiers":
-                    result = await self._send_command("get_modifiers", {
-                        "object_name": arguments["object_name"],
-                    })
+                    result = await self._send_command(
+                        "get_modifiers",
+                        {
+                            "object_name": arguments["object_name"],
+                        },
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "add_modifier":
@@ -643,26 +697,35 @@ print("Render complete: {temp_path}")
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "remove_modifier":
-                    result = await self._send_command("remove_modifier", {
-                        "object_name": arguments["object_name"],
-                        "modifier_name": arguments["modifier_name"],
-                    })
+                    result = await self._send_command(
+                        "remove_modifier",
+                        {
+                            "object_name": arguments["object_name"],
+                            "modifier_name": arguments["modifier_name"],
+                        },
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "apply_modifier":
-                    result = await self._send_command("apply_modifier", {
-                        "object_name": arguments["object_name"],
-                        "modifier_name": arguments["modifier_name"],
-                    })
+                    result = await self._send_command(
+                        "apply_modifier",
+                        {
+                            "object_name": arguments["object_name"],
+                            "modifier_name": arguments["modifier_name"],
+                        },
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "set_geometry_nodes_input":
-                    result = await self._send_command("set_geometry_nodes_input", {
-                        "object_name": arguments["object_name"],
-                        "modifier_name": arguments["modifier_name"],
-                        "input_name": arguments["input_name"],
-                        "value": arguments["value"],
-                    })
+                    result = await self._send_command(
+                        "set_geometry_nodes_input",
+                        {
+                            "object_name": arguments["object_name"],
+                            "modifier_name": arguments["modifier_name"],
+                            "input_name": arguments["input_name"],
+                            "value": arguments["value"],
+                        },
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "list_asset_libraries":
@@ -697,7 +760,9 @@ print("Render complete: {temp_path}")
     async def _send_command(self, cmd_type: str, params: dict) -> dict:
         """Send a command to the Blender socket server"""
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, self._send_command_sync, cmd_type, params)
+        return await loop.run_in_executor(
+            None, self._send_command_sync, cmd_type, params
+        )
 
     def _send_command_sync(self, cmd_type: str, params: dict) -> dict:
         """Send a command to the Blender socket server (blocking)"""
@@ -746,9 +811,7 @@ print("Render complete: {temp_path}")
         """Run the MCP server"""
         async with stdio_server() as (read_stream, write_stream):
             await self.server.run(
-                read_stream,
-                write_stream,
-                self.server.create_initialization_options()
+                read_stream, write_stream, self.server.create_initialization_options()
             )
 
 
