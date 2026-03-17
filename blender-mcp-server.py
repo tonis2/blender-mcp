@@ -67,7 +67,7 @@ class BlenderMCPServer:
                 ),
                 Tool(
                     name="get_viewport_screenshot",
-                    description="Capture a screenshot of the current Blender 3D viewport. Returns the image as base64-encoded PNG.",
+                    description="Capture a screenshot of a Blender editor area. Returns the image as base64-encoded PNG.",
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -75,6 +75,29 @@ class BlenderMCPServer:
                                 "type": "integer",
                                 "description": "Maximum size in pixels for the largest dimension (default: 800)",
                                 "default": 800,
+                            },
+                            "area_type": {
+                                "type": "string",
+                                "description": "Blender editor area type to capture (default: VIEW_3D)",
+                                "default": "VIEW_3D",
+                                "enum": [
+                                    "VIEW_3D",
+                                    "IMAGE_EDITOR",
+                                    "UV_EDITOR",
+                                    "NODE_EDITOR",
+                                    "TEXT_EDITOR",
+                                    "PROPERTIES",
+                                    "OUTLINER",
+                                    "PREFERENCES",
+                                    "CONSOLE",
+                                    "TIMELINE",
+                                    "DOPESHEET_EDITOR",
+                                    "GRAPH_EDITOR",
+                                    "NLA_EDITOR",
+                                    "SEQUENCE_EDITOR",
+                                    "CLIP_EDITOR",
+                                    "SPREADSHEET",
+                                ],
                             },
                         },
                         "required": [],
@@ -458,15 +481,16 @@ class BlenderMCPServer:
 
                 elif name == "get_viewport_screenshot":
                     max_size = arguments.get("max_size", 800)
+                    area_type = arguments.get("area_type", "VIEW_3D")
                     result = await self._send_command(
-                        "get_viewport_screenshot", {"max_size": max_size}
+                        "get_viewport_screenshot", {"max_size": max_size, "area_type": area_type}
                     )
                     image_data = result.get("image_data", "")
                     if image_data:
                         return [
                             TextContent(
                                 type="text",
-                                text=f"Viewport screenshot captured ({max_size}px max)",
+                                text=f"{area_type} screenshot captured ({max_size}px max)",
                             ),
                             ImageContent(
                                 type="image",

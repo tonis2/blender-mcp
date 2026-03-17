@@ -261,8 +261,8 @@ class BlenderMCPServer:
 
         return obj_info
 
-    def get_viewport_screenshot(self, max_size=800):
-        """Capture viewport screenshot and return as base64"""
+    def get_viewport_screenshot(self, max_size=800, area_type="VIEW_3D"):
+        """Capture screenshot of a specific editor area and return as base64"""
         import tempfile
         import base64
         import os
@@ -270,26 +270,26 @@ class BlenderMCPServer:
         temp_path = tempfile.mktemp(suffix=".png")
 
         try:
-            # Find 3D viewport
-            view3d_area = None
-            view3d_region = None
+            # Find the target area
+            target_area = None
+            target_region = None
             target_window = None
 
             for window in bpy.context.window_manager.windows:
                 for area in window.screen.areas:
-                    if area.type == "VIEW_3D":
-                        view3d_area = area
+                    if area.type == area_type:
+                        target_area = area
                         target_window = window
                         for region in area.regions:
                             if region.type == "WINDOW":
-                                view3d_region = region
+                                target_region = region
                                 break
                         break
-                if view3d_area:
+                if target_area:
                     break
 
-            if not view3d_area or not view3d_region:
-                raise Exception("No 3D viewport found")
+            if not target_area or not target_region:
+                raise Exception(f"No {area_type} area found")
 
             # Store screenshot result
             screenshot_result = {"success": False, "error": None}
@@ -297,12 +297,11 @@ class BlenderMCPServer:
             def capture_screenshot():
                 """Capture screenshot from main thread"""
                 try:
-                    # Use screenshot_area operator which is more reliable
                     override = {
                         "window": target_window,
                         "screen": target_window.screen,
-                        "area": view3d_area,
-                        "region": view3d_region,
+                        "area": target_area,
+                        "region": target_region,
                     }
                     with bpy.context.temp_override(**override):
                         # Save screenshot to temp file
