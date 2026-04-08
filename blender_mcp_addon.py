@@ -362,14 +362,17 @@ class BlenderMCPServer:
             except:
                 pass
 
+    _exec_namespace = {"bpy": bpy}
+
     def execute_code(self, code):
-        """Execute Python code"""
+        """Execute Python code with shared state across calls"""
         try:
-            namespace = {"bpy": bpy}
+            # Ensure bpy is always available
+            self._exec_namespace["bpy"] = bpy
             capture_buffer = io.StringIO()
 
             with redirect_stdout(capture_buffer):
-                exec(code, namespace)
+                exec(code, self._exec_namespace)
 
             output = capture_buffer.getvalue()
             if not output.strip():
