@@ -841,6 +841,15 @@ def register():
         max=65535,
     )
 
+    def _autostart_server():
+        global _server
+        if not _server:
+            _server = BlenderMCPServer(port=9876)
+        _server.start()
+        return None
+
+    bpy.app.timers.register(_autostart_server, first_interval=0.1)
+
 
 def unregister():
     global _server
