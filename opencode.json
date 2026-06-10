@@ -3,7 +3,7 @@
   "mcp": {
     "blender": {
       "type": "local",
-      "command": ["python3", "./blender-mcp-server.py"],
+      "command": ["uv", "run", "--with", "mcp", "python", "./blender_mcp_server.py"],
       "environment": {
         "BLENDER_HOST": "localhost",
         "BLENDER_PORT": "9876"
