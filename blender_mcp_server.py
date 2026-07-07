@@ -22,13 +22,10 @@ Installation:
 """
 
 import asyncio
-import base64
 import json
 import os
 import socket
-import tempfile
-from typing import Any, Optional
-from pathlib import Path
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -119,7 +116,15 @@ class BlenderMCPServer:
                 ),
                 Tool(
                     name="execute_python",
-                    description="Execute arbitrary Python code in Blender. Use with caution. Code runs in Blender's context with 'bpy' available.",
+                    description=(
+                        "Execute arbitrary Python code in Blender. Use with caution. "
+                        "Code runs in Blender's context with 'bpy' available, and "
+                        "variables persist across calls. stdout and stderr are "
+                        "captured and returned. For long-running background jobs "
+                        "(e.g. bakes), define a callable check_is_finished() that "
+                        "returns None while pending and a result dict when done; "
+                        "the response is then deferred until the job completes."
+                    ),
                     inputSchema={
                         "type": "object",
                         "properties": {
@@ -483,7 +488,9 @@ class BlenderMCPServer:
                     max_size = arguments.get("max_size", 800)
                     area_type = arguments.get("area_type", "VIEW_3D")
                     result = await self._send_command(
-                        "get_viewport_screenshot", {"max_size": max_size, "area_type": area_type}
+                        "get_viewport_screenshot",
+                        {"max_size": max_size, "area_type": area_type},
+                        timeout=120.0,
                     )
                     image_data = result.get("image_data", "")
                     if image_data:
@@ -513,8 +520,10 @@ class BlenderMCPServer:
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 elif name == "execute_python":
+                    # Long timeout: code may defer its response for a
+                    # background job via `check_is_finished`.
                     result = await self._send_command(
-                        "execute_code", {"code": arguments["code"]}
+                        "execute_code", {"code": arguments["code"]}, timeout=3600.0
                     )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -645,56 +654,30 @@ print(f"Selected {{len(selected)}} objects: {{selected}}")
                     res_y = arguments.get("resolution_y", 1080)
                     samples = arguments.get("samples", 128)
 
-                    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
-                    temp_path = temp_file.name
-                    temp_file.close()
+                    result = await self._send_command(
+                        "render_image",
+                        {
+                            "resolution_x": res_x,
+                            "resolution_y": res_y,
+                            "samples": samples,
+                        },
+                        timeout=3600.0,
+                    )
 
-                    code = f'''
-import bpy
-
-# Save current settings
-old_res_x = bpy.context.scene.render.resolution_x
-old_res_y = bpy.context.scene.render.resolution_y
-old_samples = bpy.context.scene.cycles.samples if bpy.context.scene.render.engine == 'CYCLES' else None
-
-# Set render settings
-bpy.context.scene.render.resolution_x = {res_x}
-bpy.context.scene.render.resolution_y = {res_y}
-bpy.context.scene.render.filepath = "{temp_path}"
-bpy.context.scene.render.image_settings.file_format = 'PNG'
-
-if bpy.context.scene.render.engine == 'CYCLES':
-    bpy.context.scene.cycles.samples = {samples}
-
-# Render
-bpy.ops.render.render(write_still=True)
-
-# Restore settings
-bpy.context.scene.render.resolution_x = old_res_x
-bpy.context.scene.render.resolution_y = old_res_y
-if old_samples:
-    bpy.context.scene.cycles.samples = old_samples
-
-print("Render complete: {temp_path}")
-'''
-                    result = await self._send_command("execute_code", {"code": code})
-
-                    # Read rendered image
-                    if os.path.exists(temp_path) and os.path.getsize(temp_path) > 0:
-                        with open(temp_path, "rb") as f:
-                            image_data = base64.b64encode(f.read()).decode("utf-8")
-                        os.unlink(temp_path)
-
+                    image_data = result.get("image_data", "")
+                    if image_data:
                         return [
+                            TextContent(
+                                type="text",
+                                text=f"Render complete ({res_x}x{res_y})",
+                            ),
                             ImageContent(
                                 type="image",
                                 data=image_data,
                                 mimeType="image/png",
-                            )
+                            ),
                         ]
                     else:
-                        if os.path.exists(temp_path):
-                            os.unlink(temp_path)
                         return [
                             TextContent(type="text", text=f"Render failed: {result}")
                         ]
@@ -737,6 +720,7 @@ print("Render complete: {temp_path}")
                             "object_name": arguments["object_name"],
                             "modifier_name": arguments["modifier_name"],
                         },
+                        timeout=120.0,
                     )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
@@ -772,7 +756,9 @@ print("Render complete: {temp_path}")
                         "asset_name": arguments["asset_name"],
                         "location": arguments.get("location", [0, 0, 0]),
                     }
-                    result = await self._send_command("append_asset", params)
+                    result = await self._send_command(
+                        "append_asset", params, timeout=120.0
+                    )
                     return [TextContent(type="text", text=json.dumps(result, indent=2))]
 
                 else:
@@ -781,53 +767,66 @@ print("Render complete: {temp_path}")
             except Exception as e:
                 return [TextContent(type="text", text=f"Error: {str(e)}")]
 
-    async def _send_command(self, cmd_type: str, params: dict) -> dict:
+    async def _send_command(
+        self, cmd_type: str, params: dict, timeout: float = 30.0
+    ) -> dict:
         """Send a command to the Blender socket server"""
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
-            None, self._send_command_sync, cmd_type, params
+            None, self._send_command_sync, cmd_type, params, timeout
         )
 
-    def _send_command_sync(self, cmd_type: str, params: dict) -> dict:
-        """Send a command to the Blender socket server (blocking)"""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(30.0)
-        try:
-            sock.connect((self.host, self.port))
+    def _send_command_sync(
+        self, cmd_type: str, params: dict, timeout: float = 30.0
+    ) -> dict:
+        """Send a null-byte-framed JSON command to the Blender socket server (blocking).
 
+        The addon may defer the response for long-running jobs (e.g. renders),
+        so `timeout` bounds the whole wait, not just socket activity.
+        """
+        try:
+            sock = socket.create_connection((self.host, self.port), timeout=10.0)
+        except OSError as e:
+            raise Exception(
+                f"Failed to connect to Blender at {self.host}:{self.port} "
+                f"(is the BlenderMCP addon server running?): {e}"
+            )
+
+        try:
+            sock.settimeout(timeout)
             command = {
                 "type": cmd_type,
                 "params": params,
             }
-            sock.sendall(json.dumps(command).encode("utf-8"))
+            sock.sendall(json.dumps(command).encode("utf-8") + b"\0")
 
-            response_data = b""
-            while True:
-                chunk = sock.recv(8192)
+            buffer = bytearray()
+            while b"\0" not in buffer:
+                chunk = sock.recv(65536)
                 if not chunk:
-                    break
-                response_data += chunk
-                try:
-                    response = json.loads(response_data.decode("utf-8"))
-                    break
-                except json.JSONDecodeError:
-                    continue
+                    raise Exception(
+                        "Connection closed without response"
+                        if not buffer
+                        else "Connection closed mid-response"
+                    )
+                buffer.extend(chunk)
 
-            if not response_data:
-                raise Exception("Connection closed without response")
-
+            response_data = bytes(buffer[: buffer.index(b"\0")])
             try:
                 response = json.loads(response_data.decode("utf-8"))
-            except json.JSONDecodeError:
-                raise Exception(f"Invalid JSON response: {response_data[:200]}")
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                raise Exception(f"Invalid JSON response: {response_data[:200]!r}")
 
             if response.get("status") == "error":
                 raise Exception(response.get("message", "Unknown error"))
 
             return response.get("result", {})
 
-        except Exception as e:
-            raise Exception(f"Failed to communicate with Blender: {str(e)}")
+        except socket.timeout:
+            raise Exception(
+                f"Timed out after {timeout:.0f}s waiting for Blender "
+                f"to respond to '{cmd_type}'"
+            )
         finally:
             sock.close()
 
