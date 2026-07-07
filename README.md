@@ -16,10 +16,20 @@ This addon lets AI control Blender through natural language. AI can:
 
 ## How it works
 
-Two components communicate over a local socket:
+Two components communicate over a local socket using null-byte-delimited JSON frames:
 
-1. **Blender addon** (`blender_mcp_addon.py`) — runs a socket server inside Blender that executes commands
-2. **MCP server** (`blender-mcp-server.py`) — translates MCP tool calls from AI into socket commands
+1. **Blender addon** (`blender_mcp_addon.py`) — runs a non-blocking socket server inside Blender, polled from a `bpy.app.timers` callback so the UI never freezes on socket I/O. Commands always execute on Blender's main thread.
+2. **MCP server** (`blender_mcp_server.py`) — translates MCP tool calls from AI into socket commands
+
+Notable behavior:
+
+- **Deferred responses** — long-running jobs keep the connection open and respond when done (up to 1 hour). `render_image` uses this so renders don't block the UI, and `execute_python` code can opt in by defining a `check_is_finished()` callable that returns `None` while pending and a result dict when finished.
+- **Output capture** — `execute_python` returns both stdout and stderr, and errors include the full traceback.
+- **Weak sandbox** — `sys.exit()` and a few known-destructive operators (`wm.quit_blender`, factory-reset ops) are blocked in executed code. This is guidance, not a security boundary.
+- **Adaptive polling** — the addon polls at 50 ms while active and backs off to 1 s after 5 s of inactivity.
+- **Limits** — requests are capped at 10 MiB; clients that don't complete a request within 10 s are evicted.
+
+> **Note:** the framed protocol was introduced in addon v2.1.0. The addon and MCP server must both be from the same version — after updating, reinstall/reload the addon in Blender.
 
 ## Setup
 
