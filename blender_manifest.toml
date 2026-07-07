@@ -1,0 +1,21 @@
+schema_version = "1.0.0"
+
+id = "blender_mcp"
+version = "2.1.0"
+name = "Blender MCP"
+tagline = "Connect Blender to AI via the Model Context Protocol"
+maintainer = "Tonis"
+type = "add-on"
+website = "https://github.com/tonis2/blender-mcp"
+
+blender_version_min = "4.2.0"
+
+license = [
+  "SPDX:Apache-2.0",
+]
+
+tags = ["Development"]
+
+[permissions]
+network = "Runs a local TCP socket server for MCP client communication"
+files = "Temp files for screenshots/renders, reading asset libraries"

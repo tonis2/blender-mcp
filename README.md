@@ -35,11 +35,22 @@ Notable behavior:
 
 ### 1. Install the Blender addon
 
+**Option A — drag & drop (Blender 4.2+, recommended)**
+
+1. Download `blender_mcp-<version>.zip` from the [latest release](https://github.com/tonis2/blender-mcp/releases/latest) — it's built automatically by CI. (To build locally instead: `python3 build_extension.py` → `dist/`.)
+2. Drag the zip from your file manager into the Blender window
+3. Confirm the **Install from Disk** dialog (keep "Enable Add-on" checked)
+
+How this works: since 4.2, Blender installs extensions via drag & drop. Dropping a `.zip` extension package installs it into your *User Default* (local) repository — no update notifications, you update by dropping a newer zip. (Dropping a repository *URL* — the way the official blender.org Lab MCP extension installs — instead registers a remote repository and enables update checks; that requires hosting a repository index, so a local zip is the practical route for this addon.)
+
+**Option B — classic add-on install**
+
 1. Open Blender
 2. Go to **Edit > Preferences > Add-ons > Install**
 3. Select `blender_mcp_addon.py`
 4. Enable **"Interface: Blender MCP"**
-5. Open the sidebar in the 3D Viewport (press `N`), find the **BlenderMCP** tab, and click **Start Server**
+
+With either option, the socket server auto-starts on port 9876. You can also start/stop it manually: open the sidebar in the 3D Viewport (press `N`), find the **BlenderMCP** tab.
 
 ### 2. Install the MCP server dependency
 
@@ -75,6 +86,10 @@ Replace `/path/to/blender-mcp-server.py` with the actual path to the file.
 
 ## Requirements
 
-- Blender 3.0+
+- Blender 3.0+ (4.2+ for drag & drop extension install)
 - Python 3.10+
 - `mcp` Python package
+
+## Releasing
+
+CI (`.github/workflows/build-extension.yml`) builds the extension zip on every push and PR (available as a workflow artifact). To publish a release: bump `version` in `blender_manifest.toml` and `bl_info` in `blender_mcp_addon.py`, then push a matching tag (e.g. `v2.1.0`) — CI verifies the versions match and attaches the zip to a GitHub release.
